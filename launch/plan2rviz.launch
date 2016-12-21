@@ -1,0 +1,9 @@
+<?xml version="1.0" ?>
+<launch>
+
+	<arg name="rviz_conf" default="$(find plan2rviz)/rviz/plan2rviz.rviz"/>
+
+	<node name="rviz" pkg="rviz" type="rviz" args="-d $(arg rviz_conf)"/>
+    <node name="plan2rviz" pkg="plan2rviz" type="plan2rviz"/>
+
+</launch>

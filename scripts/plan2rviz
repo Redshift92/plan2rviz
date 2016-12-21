@@ -1,0 +1,111 @@
+#!/usr/bin/env python
+
+import rospy
+import json
+
+import visualization_msgs.msg as vsmsgs
+from std_msgs.msg import String
+from geometry_msgs.msg import Point
+
+rviz_players = {
+                    'obstacles': {
+                        'default_rgb':  [0,0,0],
+                        'default_height': 2,
+                        'type': vsmsgs.Marker.CUBE,
+                        'last_sent_info': [0]
+                    },
+                    'agents': {
+                        'default_rgb':  [255,0,0],
+                        'default_height': 1,
+                        'type': vsmsgs.Marker.CUBE,
+                        'last_sent_info': [0]
+                    },
+                    'edges': {
+                        'default_rgb':  [0,100,0],
+                        'default_height': 0.2,
+                        'type': vsmsgs.Marker.LINE_LIST,
+                        'last_sent_info': [0]
+                    }
+                }
+
+def get_point(x, y):
+    p = Point()
+    p.z = 0
+    p.x = x
+    p.y = y
+    return p
+
+def get_basic_player(ns, type, action, rgb = None, height = None, position = None):
+    mk = vsmsgs.Marker()
+    mk.header.frame_id = 'map_frame'
+    mk.ns = ns
+    mk.type = type
+    mk.action = action
+    if rgb is not None:
+        mk.color.r = rgb[0]
+        mk.color.g = rgb[1]
+        mk.color.b = rgb[2]
+        mk.color.a = 1
+    if height is not None:
+        if type == vsmsgs.Marker.LINE_LIST:
+            mk.scale.x = height
+        else:
+            mk.scale.x = 1
+            mk.scale.y = 1
+            mk.scale.z = height
+    if position is not None:
+        for xyz in ['x', 'y', 'z']:
+            setattr(mk.pose.orientation, xyz, 0)
+        mk.pose.orientation.w = 1
+        if type == vsmsgs.Marker.LINE_LIST:
+            for i, x in enumerate(position[0]):
+                mk.points.append(get_point(x, position[1][i]))
+        else:
+            mk.pose.position.x = position[0]
+            mk.pose.position.y = position[1]
+            mk.pose.position.z = 0
+    return mk
+
+
+def update_player(player_name, player_data):
+    # delete
+    last_len = rviz_players[player_name]['last_sent_info'][0]
+    if (len(player_data) < last_len):
+        plr_to_del = []
+        for to_del_id in range(len(player_data)-1, last_len):
+            plr_to_del.append(get_basic_player(player_name, rviz_players[player_name]['type'], vsmsgs.Marker.DELETE))
+            plr_to_del[-1].id = to_del_id
+        players_pub.publish(plr_to_del)
+    rviz_players[player_name]['last_sent_info'][0] = len(player_data)
+    plr_to_pub = []
+    for i, plr in enumerate(player_data):
+        plr_rh = { 'rgb': rviz_players[player_name]['default_rgb'],
+                    'height': rviz_players[player_name]['default_height'] }
+        if len(plr) == 3:
+            for rh in ['rgb', 'height']:
+                if rh in plr[2]:
+                    plr_rh[rh] = plr[2][rh]
+        plr_to_pub.append(get_basic_player(
+                            player_name, rviz_players[player_name]['type'], vsmsgs.Marker.ADD,
+                            rgb = plr_rh['rgb'],
+                            height = plr_rh['height'],
+                            position = plr[0:2]))
+        plr_to_pub[i].id = i
+    players_pub.publish(plr_to_pub)
+
+def update_rviz(data):
+    for player in rviz_players:
+        if player in data:
+            # globals()['update_' + player](data[player])
+            update_player(player, data[player])
+
+def receive_data(str_data):
+    data = json.loads(str_data.data)
+    update_rviz(data)
+
+rospy.init_node('plan2rviz')
+
+players_pub = rospy.Publisher("map_players_array", vsmsgs.MarkerArray, queue_size = 10)
+
+rospy.Subscriber("plan2rviz_notifier", String, receive_data)
+rospy.spin()
